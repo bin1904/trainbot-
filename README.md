@@ -35,35 +35,4 @@ So khớp từ hoặc cụm từ trong câu với các luật
 Đếm tần suất nhãn xuất hiện và chọn nhãn phổ biến nhất
 Kết quả:
 Trả về nhãn dự đoán hoặc "Không xác định" nếu không có luật phù hợp.
-6. Hàm test_train(sentence, lengthdata)
-Chức năng:
-Trích xuất vector đặc trưng cho câu.
-Đặc trưng sử dụng:
-Tỷ lệ số từ khóa xuất hiện trong câu
-Tổng số từ khóa xuất hiện
-Mục đích sử dụng:
-Chuẩn bị dữ liệu cho mô hình KNN, áp dụng cho cả dữ liệu huấn luyện và dữ liệu kiểm tra.
-7. Hàm knn_predict(text, k=5)
-Chức năng:
-Dự đoán nhãn của câu bằng thuật toán K-Nearest Neighbors (KNN).
-Nguyên lý hoạt động:
-Trích vector đặc trưng cho câu test
-Tính khoảng cách Euclid tới các câu huấn luyện
-Lấy k hàng xóm gần nhất
-Chọn nhãn xuất hiện nhiều nhất trong k hàng xóm
-8. Hàm check_sensitive(text)
-Chức năng:
-Kết hợp toàn bộ hệ thống để dự đoán nhãn cuối cùng cho câu đầu vào.
-Quy trình xử lý:
-Sửa lỗi chính tả
-Dự đoán bằng rule-based
-Dự đoán bằng KNN
-Ưu tiên kết quả từ rule, nếu không có thì dùng KNN
-Kết quả trả về:
-Danh sách gồm:
-Câu sau khi sửa
-Nhãn cuối cùng
-Nguồn dự đoán (RULE hoặc KNN)
-9. Khối main
-Chức năng:
-Cho phép người dùng nhập câu từ bàn phím, sau đó thực hiện toàn bộ quá trình xử lý và in ra kết quả dự đoán.
+
