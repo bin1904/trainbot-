@@ -79,28 +79,37 @@ def correct_sentence(sentence):
     i = 0
 
     while i < len(words):
-        # 🔹 ưu tiên ghép 2 từ
+        # 🔹 ưu tiên ghép 2 từ (chỉ khi cả 2 chưa có dấu)
         if i + 1 < len(words):
-            pair = words[i] + " " + words[i+1]
-            key = remove_diacritics(pair)
+            if (not has_vietnamese_char(words[i]) and
+                not has_vietnamese_char(words[i+1])):
 
-            if key in VI_MAP:
-                out.append(VI_MAP[key])  # ❗ KHÔNG [0]
-                i += 2
-                continue
+                pair = words[i] + " " + words[i+1]
+                key = remove_diacritics(pair)
+
+                if key in VI_MAP:
+                    out.append(VI_MAP[key])
+                    i += 2
+                    continue
 
         # 🔹 xử lý 1 từ
         w = words[i]
-        key = remove_diacritics(w)
 
-        if key in VI_MAP:
-            out.append(VI_MAP[key])  # ❗ KHÔNG [0]
+        # nếu đã có dấu → giữ nguyên
+        if has_vietnamese_char(w):
+            out.append(w)
         else:
-            out.append(remove_repeat_chars(w))
+            key = remove_diacritics(w)
+
+            if key in VI_MAP:
+                out.append(VI_MAP[key])
+            else:
+                out.append(remove_repeat_chars(w))
 
         i += 1
 
     return " ".join(out)
+
 # ======================
 # RULE MODEL
 # ======================
@@ -181,3 +190,4 @@ def check_sensitive(text):
 if __name__ == "__main__":
     text = input("Nhập câu: ")
     print(check_sensitive(text))
+
