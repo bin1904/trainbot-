@@ -8,251 +8,176 @@ import arraytrainbot
 # LOAD DATA
 # ======================
 
-# Đọc dữ liệu luật từ file JSON
-# rule_data: dict {từ / cụm từ : nhãn}
 with open("data.json", "r", encoding="utf-8") as f:
     rule_data = json.load(f)
 
-# sentence_data: dict dữ liệu huấn luyện cho KNN
-# {câu huấn luyện : label}
 sentence_data = datasentence.bot()
-# bot: danh sách từ khóa dùng để trích đặc trưng cho KNN
 bot = arraytrainbot.bot()
+
 # ======================
-# ==== SPELL CORRECT ===
+# LOAD VOCAB FILES
 # ======================
-# Hàm tính khoảng cách Levenshtein
-# Dùng để đo số phép biến đổi ít nhất
-# để chuyển từ chuỗi a sang chuỗi b
-def levenshtein(a, b):
-    n, m = len(a), len(b)                # Độ dài 2 chuỗi
-    dp = [[0]*(m+1) for _ in range(n+1)] # Bảng quy hoạch động
 
-    # Khởi tạo: chuyển chuỗi a -> rỗng
-    for i in range(n+1):
-        dp[i][0] = i
-    # Khởi tạo: chuyển rỗng -> chuỗi b
-    for j in range(m+1):
-        dp[0][j] = j
-    # Tính dp cho từng ký tự
-    for i in range(1, n+1):
-        for j in range(1, m+1):
-            # Nếu ký tự giống nhau thì không mất chi phí
-            cost = 0 if a[i-1] == b[j-1] else 1
+vocab = set()
 
-            dp[i][j] = min(
-                dp[i-1][j] + 1,      # Xóa ký tự
-                dp[i][j-1] + 1,      # Thêm ký tự
-                dp[i-1][j-1] + cost  # Thay thế ký tự
-            )
+# vocab từ txt (vd: vi_vocab.txt)
+with open("vi_vocab.txt", encoding="utf-8") as f:
+    VI_VOCAB = set(w.strip() for w in f if w.strip())
 
-    # Trả về khoảng cách Levenshtein
-    return dp[n][m]
-# Tạo tập từ vựng để sửa lỗi
-# Bao gồm tất cả từ trong luật và bot
-VOCAB = set()
+with open("vi_map.json", encoding="utf-8") as f:
+    VI_MAP = json.load(f)
 
-# Lấy từ trong rule_data
+# vocab từ rule json
 for k in rule_data:
-    for w in k.split():
-        VOCAB.add(w)
+    for w in k.lower().split():
+        vocab.add(w)
 
-# Lấy từ trong bot
+# vocab từ bot + sentence
 for k in bot:
-    for w in k.split():
-        VOCAB.add(w)
-#Hàm phân biệt các ký tự tiếng viêt
+    for w in k.lower().split():
+        vocab.add(w)
+
+for s in sentence_data:
+    for w in s.lower().split():
+        vocab.add(w)
+
+
+# ======================
+# SPELL CORRECT (VOCAB-BASED)
+# ======================
+import unicodedata
+
+def remove_diacritics(text):
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+
 def has_vietnamese_char(word):
-    # Danh sách ký tự tiếng Việt có dấu
-    viet_chars = "ăâđêôơưđáàảãạấầẩẫậéèẻẽẹíìỉĩịóòỏõọúùủũụýỳỷỹỵ"
-    # Kiểm tra xem từ có chứa ký tự tiếng Việt không
-    return any(c in viet_chars for c in word.lower())
-# Hàm sửa lỗi chính tả cho cả câu
-def correct_sentence(sentence, vocab, max_dist=1):
-    # Tách câu thành danh sách các từ
+    viet = "ăâđêôơưáàảãạấầẩẫậéèẻẽẹíìỉĩịóòỏõọúùủũụýỳỷỹỵ"
+    return any(c in viet for c in word.lower())
+
+def remove_repeat_chars(word):
+    return re.sub(r'(.)\1+', r'\1', word)
+
+def normalize_word(word):
+    # nếu đã có trong vocab → giữ nguyên
+    if word in vocab:
+        return word
+
+    # giảm ký tự lặp
+    w = remove_repeat_chars(word)
+    if w in vocab:
+        return w
+
+    return w
+
+def correct_sentence(sentence):
+    sentence = sentence.lower()
     words = sentence.split()
-    # Danh sách lưu các từ sau khi sửa
-    new_words = []
-    # Duyệt từng từ trong câu
-    for w in words:
-        # ======================
-        # BƯỚC 0: NẾU TỪ CÓ DẤU TIẾNG VIỆT → KHÔNG SỬA
-        # ======================
-        if has_vietnamese_char(w):
-            new_words.append(w)
-            continue
-        # ======================
-        # BƯỚC 1: KIỂM TRA TỪ ĐÃ ĐÚNG CHƯA
-        # ======================
-        if w.lower() in [v.lower() for v in vocab]:
-            new_words.append(w)
-            continue
+    out = []
+    i = 0
 
-        # ======================
-        # BƯỚC 2: TÌM TỪ GẦN NHẤT
-        # ======================
-        best_word = w
-        best_dist = max_dist + 1
+    while i < len(words):
+        # 🔹 ưu tiên ghép 2 từ
+        if i + 1 < len(words):
+            pair = words[i] + " " + words[i+1]
+            key = remove_diacritics(pair)
 
-        for v in vocab:
-            d = levenshtein(w.lower(), v.lower())
-            if d < best_dist:
-                best_dist = d
-                best_word = v
+            if key in VI_MAP:
+                out.append(VI_MAP[key])  # ❗ KHÔNG [0]
+                i += 2
+                continue
 
-        # ======================
-        # BƯỚC 3: QUYẾT ĐỊNH SỬA
-        # ======================
-        if best_dist <= max_dist:
-            new_words.append(best_word)
+        # 🔹 xử lý 1 từ
+        w = words[i]
+        key = remove_diacritics(w)
+
+        if key in VI_MAP:
+            out.append(VI_MAP[key])  # ❗ KHÔNG [0]
         else:
-            new_words.append(w)
+            out.append(remove_repeat_chars(w))
 
-    return " ".join(new_words)
+        i += 1
 
-
+    return " ".join(out)
 # ======================
-# ========= RULE MODEL
+# RULE MODEL
 # ======================
 
-def rule_predict(sentence):
-    # sentence: câu đầu vào cần dự đoán
+def rule_predict(text):
+    text = text.lower()
+    rules = sorted(rule_data.items(), key=lambda x: len(x[0]), reverse=True)
 
-    # Loại bỏ các ký tự đặc biệt trong câu
-    test = re.sub(r"[.*+?!${},]", " ", sentence)
-
-    # Tách từ
-    split_test = test.split()
-
-    # results: lưu danh sách label tìm được theo luật
-    results = []
-
-    # countelement: đếm số lần xuất hiện của mỗi label
-    countelement = {}
-
-    # Hàm đếm tần suất phần tử
-    def count(arr):
-        for x in arr:
-            countelement[x] = countelement.get(x, 0) + 1
-
-    # Duyệt từng luật
-    for key in rule_data:
-        # Nếu là cụm từ
-        if len(key.split()) > 1:
-            if key.lower() in test.lower() or test.lower() in key.lower():
-                results.append(rule_data[key])
-        else:
-            # Nếu là từ đơn
-            for w in split_test:
-                if key.lower() == w.lower():
-                    results.append(rule_data[key])
-
-    # Nếu tìm được label
-    if results:
-        count(results)
-        return max(countelement, key=countelement.get)
+    for key, label in rules:
+        if key.lower() in text or text in key.lower():
+            return label
 
     return "Không xác định"
 
 # ======================
-# ========= KNN MODEL
+# KNN MODEL
 # ======================
 
-# dataset: vector đặc trưng câu train
 dataset = {}
-
-# testsen: vector đặc trưng câu test
 testsen = {}
 
-def test_train(sentence, lengthdata):
-    # sentence: câu cần trích đặc trưng
-    # lengthdata: phân biệt train / test
+def extract_feature(sentence):
+    sentence = sentence.lower()
+    hit = []
 
-    sentence_lower = sentence.lower()
-    test = []
-
-    # Duyệt danh sách từ khóa bot
     for item in bot:
-        if len(item) >= 8:
-            for w in item.split():
-                if w.lower() in sentence_lower:
-                    test.append(w.lower())
-        else:
-            if item.lower() in sentence_lower:
-                test.append(item.lower())
+        if item.lower() in sentence:
+            hit.append(item.lower())
 
-    # Loại bỏ trùng
-    ans = list(dict.fromkeys(test))
-    # Tách từ
     words = sentence.split()
-    # Train
-    if lengthdata > 2:
-        dataset[sentence] = [len(ans)/len(words) if words else 0, len(ans)]
-    else:
-        # Test
-        testsen[sentence] = [len(ans)/len(words) if words else 0, len(ans)]
+    return [
+        len(hit) / len(words) if words else 0,
+        len(hit)
+    ]
 
-# Huấn luyện
 for s in sentence_data:
-    test_train(s, len(sentence_data))
+    dataset[s] = extract_feature(s)
 
 def knn_predict(text, k=5):
-    # Trích đặc trưng cho câu test
-    test_train(text, 1)
+    test_vec = extract_feature(text)
+    dist = {}
 
-    knn_result = {}
-
-    # Tính khoảng cách Euclid
     for s in dataset:
-        dist = math.sqrt(
-            (dataset[s][0] - testsen[text][0])**2 +
-            (dataset[s][1] - testsen[text][1])**2
+        d = math.sqrt(
+            (dataset[s][0] - test_vec[0])**2 +
+            (dataset[s][1] - test_vec[1])**2
         )
-        knn_result[s] = dist
-    # Lấy k hàng xóm gần nhất
-    nearest = sorted(knn_result, key=knn_result.get)[:k]
-    # Lấy label
+        dist[s] = d
+
+    nearest = sorted(dist, key=dist.get)[:k]
     labels = [sentence_data[s] for s in nearest]
     return max(set(labels), key=labels.count)
 
 # ======================
-# ========= KẾT HỢP
+# PIPELINE
 # ======================
-
 def check_sensitive(text):
-    # Sửa lỗi chính tả trước
-    fixed_text = correct_sentence(text, VOCAB)
+    fixed = correct_sentence(text)
 
-    print("Câu gốc :", text)
-    print("Câu sửa :", fixed_text)
+    rule_label = rule_predict(fixed)
+    knn_label = knn_predict(fixed)
 
-    # Dự đoán rule
-    rule_label = rule_predict(fixed_text)
-
-    # Dự đoán KNN
-    knn_label = knn_predict(fixed_text)
-
-    # Ưu tiên rule
+    # ưu tiên rule
     if rule_label != "Không xác định":
-        final_label = rule_label
-        source = "RULE"
+        final = rule_label
+        src = "RULE"
     else:
-        final_label = knn_label
-        source = "KNN"
-
+        final = knn_label
+        src = "KNN"
+    print("Câu gốc     :", text)
+    print("Câu sau sửa :", fixed)
     print("Rule predict:", rule_label)
     print("KNN predict :", knn_label)
-    print("➡ Label cuối:", final_label, f"(from {source})")
-
-    return [fixed_text, final_label, source]
-
 # ======================
-# ========= CHẠY
+# RUN
 # ======================
 
 if __name__ == "__main__":
     text = input("Nhập câu: ")
-    result = check_sensitive(text)
-
-    print("\nKết quả cuối:")
-    print(result)
+    print(check_sensitive(text))
