@@ -10,7 +10,7 @@ from multiprocessing import Pool, cpu_count
 INPUT = "viwiki-latest-pages-articles.xml.bz2"
 
 MAX_WORDS = 80000
-MAX_PAGES = float("inf")
+MAX_PAGES = 150000 
 MIN_FREQ = 10
 
 NUM_PROC   = 2
@@ -197,3 +197,4 @@ if __name__ == "__main__":
 
     print("✅ DONE")
     print("Từ tiếng Việt:", len(filtered))
+
